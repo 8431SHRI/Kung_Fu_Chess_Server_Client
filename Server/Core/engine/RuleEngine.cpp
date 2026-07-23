@@ -7,31 +7,36 @@
 #include "RulePawn.hpp"
 
 // אתחול ויצירת אובייקטי החוקים השונים בתוך מפת הניהול
-RuleEngine::RuleEngine() {
-    moveRules[PieceType::KING]   = std::make_unique<RuleKing>();
-    moveRules[PieceType::QUEEN]  = std::make_unique<RuleQueen>();
-    moveRules[PieceType::ROOK]   = std::make_unique<RuleRook>();
+RuleEngine::RuleEngine()
+{
+    moveRules[PieceType::KING] = std::make_unique<RuleKing>();
+    moveRules[PieceType::QUEEN] = std::make_unique<RuleQueen>();
+    moveRules[PieceType::ROOK] = std::make_unique<RuleRook>();
     moveRules[PieceType::BISHOP] = std::make_unique<RuleBishop>();
     moveRules[PieceType::KNIGHT] = std::make_unique<RuleKnight>();
-    moveRules[PieceType::PAWN]   = std::make_unique<RulePawn>();
+    moveRules[PieceType::PAWN] = std::make_unique<RulePawn>();
 }
 
 // מימוש בדיקת חוקיות מהלך הכלים על הלוח
-MoveValidation RuleEngine::isValidMove(const Position& to, const Position& from, const Board& grid) {
+MoveValidation RuleEngine::isValidMove(const Position &to, const Position &from, const Board &grid)
+{
     // 1. בדיקת גבולות הלוח
-    if (!grid.isInsideBoard(to)) {
+    if (!grid.isInsideBoard(to))
+    {
         return {false, "outside_board"};
     }
 
     // 2. בדיקת קיום כלי במקור
     auto sourcePiece = grid.getPieceAt(from);
-    if (!sourcePiece) {
+    if (!sourcePiece)
+    {
         return {false, "empty_source"};
     }
 
     // 3. בדיקת "אש ידידותית" - מניעת תנועה למשבצת שבה נמצא כלי מאותו צבע
     auto destinationPiece = grid.getPieceAt(to);
-    if (destinationPiece && sourcePiece->getSide() == destinationPiece->getSide()) {
+    if (destinationPiece && sourcePiece->getSide() == destinationPiece->getSide())
+    {
         return {false, "friendly_destination"};
     }
 
@@ -40,7 +45,8 @@ MoveValidation RuleEngine::isValidMove(const Position& to, const Position& from,
     auto legalMoves = moveRules[type]->getLegalDestinations(grid, *sourcePiece);
 
     // אם מיקום היעד לא נמצא ברשימת היעדים החוקיים של הכלי
-    if (legalMoves.find(to) == legalMoves.end()) {
+    if (legalMoves.find(to) == legalMoves.end())
+    {
         return {false, "not_valid_path_for_this_type"};
     }
 
@@ -48,17 +54,21 @@ MoveValidation RuleEngine::isValidMove(const Position& to, const Position& from,
 }
 
 // מימוש בדיקת זמינות מצב הכלי לקפיצה
-MoveValidation RuleEngine::isValidJump(std::shared_ptr<Piece> piece) const {
-    if (piece->getState() == PieceState::MOVING) {
-        return { false, "piece_is_moving" };
+MoveValidation RuleEngine::isValidJump(std::shared_ptr<Piece> piece) const
+{
+    if (piece->getState() == PieceState::MOVING)
+    {
+        return {false, "piece_is_moving"};
     }
-    if (piece->getState() == PieceState::AIRBORNE) {
-        return { false, "piece_is_airborne" };
+    if (piece->getState() == PieceState::AIRBORNE)
+    {
+        return {false, "piece_is_airborne"};
     }
-    if (piece->getState() == PieceState::CAPTURED) {
-        return { false, "piece_is_captured" };
+    if (piece->getState() == PieceState::CAPTURED)
+    {
+        return {false, "piece_is_captured"};
     }
-    return { true, "ok" };
+    return {true, "ok"};
 }
 // std::set<Position> RuleEngine::getLegalMoves(
 //     const Position& from,
@@ -82,9 +92,7 @@ MoveValidation RuleEngine::isValidJump(std::shared_ptr<Piece> piece) const {
 //         board,
 //         *piece);
 // }
-std::set<Position> RuleEngine::getLegalMoves(
-    const Position& from,
-    const Board& board)
+std::set<Position> RuleEngine::getLegalMoves(const Position &from, const Board &board) const
 {
     std::cout << "getLegalMoves for: "
               << from.getRow()
@@ -100,17 +108,19 @@ std::set<Position> RuleEngine::getLegalMoves(
         return {};
     }
 
-    auto moves =
-        moveRules[piece->getType()]->getLegalDestinations(
-            board,
-            *piece);
+    auto it = moveRules.find(piece->getType());
+    if (it == moveRules.end())
+    {
+        return {};
+    }
+    auto moves = it->second->getLegalDestinations(board, *piece);
 
     std::cout << "Found "
               << moves.size()
               << " legal moves"
               << std::endl;
 
-    for (const auto& move : moves)
+    for (const auto &move : moves)
     {
         std::cout << "("
                   << move.getRow()

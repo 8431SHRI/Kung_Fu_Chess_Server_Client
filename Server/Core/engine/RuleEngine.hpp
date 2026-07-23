@@ -43,7 +43,5 @@ public:
      * @return MoveValidation מבנה המכיל את סטטוס הבדיקה.
      */
     MoveValidation isValidJump(std::shared_ptr<Piece> piece) const;
-    std::set<Position> getLegalMoves(
-    const Position& from,
-    const Board& board);
+    std::set<Position> getLegalMoves(const Position& from, const Board& board) const;
 };

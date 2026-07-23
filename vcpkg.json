@@ -1,0 +1,9 @@
+{
+  "name": "kung-fu-chess-online",
+  "version": "1.0.0",
+  "dependencies": [
+    "openssl",
+    "opencv"
+  ],
+  "builtin-baseline": "b533cb24508492040b3c6753a060d4b9f05786fa"
+}
