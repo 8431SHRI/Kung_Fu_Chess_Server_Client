@@ -193,3 +193,26 @@ void GameSession::publishSnapshotDiffEvents(const GameSnapshot& snapshot)
     previousPiecesById_ = std::move(currentById);
     hasPreviousSnapshot_ = true;
 }
+void GameSession::forceGameOver(Side loserSide, const std::string& reason)
+{
+    if (gameOver_)
+    {
+        return;
+    }
+
+    gameOver_ = true;
+
+    if (bus_)
+    {
+        GameOverEvent event;
+        event.gameId = gameId_;
+        event.winnerSide = (loserSide == Side::WHITE) ? Side::BLACK : Side::WHITE;
+        event.reason = reason;
+        bus_->publish(event);
+    }
+
+    if (gameOverCallback_)
+    {
+        gameOverCallback_(reason);
+    }
+}

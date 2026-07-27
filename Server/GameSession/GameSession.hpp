@@ -66,7 +66,10 @@ public:
     void setSnapshotCallback(SnapshotCallback callback) { snapshotCallback_ = std::move(callback); }
 
     void setGameOverCallback(GameOverCallback callback) { gameOverCallback_ = std::move(callback); }
-
+    // הפסד אוטומטי חיצוני (ניתוק/ויתור) - נקרא ע"י Room, לא ע"י GameEngine/Core.
+    // לא נוגעת ב-Board/RuleEngine בכלל - רק מסמנת gameOver_ ומפרסמת GameOverEvent.
+    // אם המשחק כבר הסתיים (למשל מלך נאכל באותו tick) - no-op, לא דורסת תוצאה קודמת.
+    void forceGameOver(Side loserSide, const std::string& reason);
     bool isGameOver() const { return gameOver_; }
 
     // חשיפת Board/RuleEngine ל-BotPlayerSource שנבנה *אחרי* ש-GameSession כבר קיים

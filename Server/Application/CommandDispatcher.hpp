@@ -24,6 +24,9 @@ public:
         MessageType type,
         const nlohmann::json& payload,
         Command::SendCallback sendCallback);
+        // נקרא ע"י ConnectionHandler ב-onDisconnect(). מוצא את החדר של החיבור (אם יש)
+    // ומפעיל את טיפול הניתוק שלו (טיימר/הסרת spectator), ורק אז מנקה מ-SessionRegistry.
+    void handleDisconnect(const std::string& connectionId);
 
 private:
     std::shared_ptr<AuthService> authService_;

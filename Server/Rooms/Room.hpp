@@ -1,5 +1,5 @@
 #pragma once
-
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -27,7 +27,7 @@ struct JoinResult
     std::shared_ptr<NetworkPlayerSource> playerSource;
 };
 
-class Room
+class Room : public std::enable_shared_from_this<Room>
 {
 public:
     using SendCallback = std::function<void(const std::string& rawJson)>;
@@ -53,6 +53,13 @@ public:
     // דורשת ששחקן אנושי אחד בדיוק כבר הצטרף.
     void fillWithBot();
 
+    static constexpr int kDisconnectGraceSeconds = 30;
+
+    // נקרא ע"י Network (ConnectionHandler/CommandDispatcher) כשחיבור מתנתק.
+    // אם זה player - מתחילה טיימר חסד (kDisconnectGraceSeconds); אם לא חוזר עד אז,
+    // GameSession מקבל הפסד אוטומטי (forceGameOver, reason="disconnect_timeout").
+    // אם זה spectator - מוסר בשקט, בלי טיימר (כפי שסוכם).
+    void onConnectionLost(const std::string& connectionId);
     void leave(const std::string& connectionId);
 
     void broadcast(const std::string& rawJson) const;
@@ -66,7 +73,7 @@ public:
     std::shared_ptr<NetworkPlayerSource> findPlayerSource(const std::string& connectionId) const;
 
 private:
-    struct PlayerSlot
+   struct PlayerSlot
     {
         std::string connectionId;
         std::string userId;
@@ -75,6 +82,8 @@ private:
         Side side;
         std::shared_ptr<NetworkPlayerSource> source;
         SendCallback sendCallback;
+        bool connected = true;       
+        int disconnectToken = 0;    
     };
 
     std::string name_;
@@ -99,4 +108,6 @@ private:
     void publishGameStartedLocked(const std::string& blackUsername) const;
 
     static std::unique_ptr<Board> buildStandardBoard();
+    void applyDisconnectTimeoutIfStillPending(
+        const std::string& connectionId, int expectedToken, Side loserSide);
 };

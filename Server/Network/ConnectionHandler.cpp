@@ -44,5 +44,5 @@ void ConnectionHandler::trackSessionIfLoginSucceeded(const CommandResult& result
 
 void ConnectionHandler::onDisconnect()
 {
-    sessionRegistry_->remove(connectionId_);
+    dispatcher_->handleDisconnect(connectionId_);
 }

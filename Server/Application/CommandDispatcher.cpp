@@ -80,3 +80,19 @@ CommandResult CommandDispatcher::dispatch(
         return errorResult("unsupported_message_type: " + toString(type));
     }
 }
+void CommandDispatcher::handleDisconnect(const std::string& connectionId)
+{
+    auto gameIdOpt = sessionRegistry_->getGameId(connectionId);
+
+    if (gameIdOpt.has_value())
+    {
+        auto room = roomManager_->find(gameIdOpt.value());
+
+        if (room)
+        {
+            room->onConnectionLost(connectionId);
+        }
+    }
+
+    sessionRegistry_->remove(connectionId);
+}

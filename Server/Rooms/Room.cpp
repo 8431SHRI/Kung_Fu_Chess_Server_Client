@@ -1,6 +1,8 @@
 #include "Room.hpp"
 
 #include <algorithm>
+#include <thread>
+#include <chrono>
 
 #include "Piece.hpp"
 #include "MessageJson.hpp"
@@ -26,6 +28,30 @@ Room::Room(
     {
         scoreUpdateSubscriber_ = std::make_unique<ScoreUpdateSubscriber>(bus_, userRepository_);
     }
+
+    bus_->subscribe<GameOverEvent>([this](const GameOverEvent& event)
+    {
+        std::string winnerUserId;
+
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+
+            if (event.winnerSide.has_value())
+            {
+                for (const auto& player : players_)
+                {
+                    if (player.side == *event.winnerSide)
+                    {
+                        winnerUserId = player.userId;
+                        break;
+                    }
+                }
+            }
+        }
+
+        GameOverMsg msg{name_, winnerUserId, event.reason};
+        broadcast(JsonSerializer::wrap(MessageType::GAME_OVER, MessageJson::toJson(msg)));
+    });
 }
 
 std::unique_ptr<Board> Room::buildStandardBoard()
@@ -59,6 +85,22 @@ JoinResult Room::join(
     SendCallback sendCallback)
 {
     std::lock_guard<std::mutex> lock(mutex_);
+
+    // reconnect: userId כבר יש לו slot בחדר (מנותק כרגע) - מחברים מחדש, לא יוצרים שחקן שלישי
+    for (auto& player : players_)
+    {
+        if (player.userId == userId)
+        {
+            player.connectionId = connectionId;
+            player.sendCallback = sendCallback;
+            player.connected = true;
+            player.disconnectToken += 1; // מבטל כל טיימר-חסד תלוי-ועומד מהניתוק הקודם
+
+            broadcastRoomStateLocked();
+
+            return JoinResult{JoinRole::PLAYER, player.side, player.source};
+        }
+    }
 
     if (players_.size() < 2)
     {
@@ -252,4 +294,85 @@ std::shared_ptr<NetworkPlayerSource> Room::findPlayerSource(const std::string& c
     }
 
     return nullptr;
+}
+
+void Room::onConnectionLost(const std::string& connectionId)
+{
+    bool isPlayer = false;
+    int tokenAtScheduleTime = 0;
+    Side disconnectedSide = Side::WHITE;
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        auto it = std::find_if(players_.begin(), players_.end(),
+            [&](const PlayerSlot& p) { return p.connectionId == connectionId; });
+
+        if (it != players_.end())
+        {
+            isPlayer = true;
+            it->connected = false;
+            it->sendCallback = nullptr; // אין למי לשלוח יותר על החיבור הזה
+            it->disconnectToken += 1;
+            tokenAtScheduleTime = it->disconnectToken;
+            disconnectedSide = it->side;
+        }
+    }
+
+    if (!isPlayer)
+    {
+        // צופה - מוסר בשקט, בלי טיימר (כפי שסוכם)
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        spectators_.erase(
+            std::remove_if(spectators_.begin(), spectators_.end(),
+                [&](const std::unique_ptr<SpectatorSession>& s) { return s->getConnectionId() == connectionId; }),
+            spectators_.end());
+        return;
+    }
+
+    // שידור התראה מיידית ליריב/צופים - לא חוסם, לא ממתין לתשובה
+    DisconnectWarningMsg warning{name_, kDisconnectGraceSeconds};
+    broadcast(JsonSerializer::wrap(MessageType::DISCONNECT_WARNING, MessageJson::toJson(warning)));
+
+    std::weak_ptr<Room> weakSelf = weak_from_this();
+
+    std::thread([weakSelf, connectionId, tokenAtScheduleTime, disconnectedSide]()
+    {
+        std::this_thread::sleep_for(std::chrono::seconds(Room::kDisconnectGraceSeconds));
+
+        auto self = weakSelf.lock();
+        if (!self) { return; } // Room כבר נהרס בינתיים
+
+        self->applyDisconnectTimeoutIfStillPending(connectionId, tokenAtScheduleTime, disconnectedSide);
+    }).detach();
+}
+
+void Room::applyDisconnectTimeoutIfStillPending(
+    const std::string& connectionId, int expectedToken, Side loserSide)
+{
+    std::shared_ptr<GameSession> sessionToForfeit;
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        auto it = std::find_if(players_.begin(), players_.end(),
+            [&](const PlayerSlot& p) { return p.connectionId == connectionId; });
+
+        // אם reconnect כבר קרה (connected==true) או שהיה עוד ניתוק/reconnect אחריו
+        // (token השתנה) - הטיימר הזה כבר לא רלוונטי.
+        if (it == players_.end() || it->connected || it->disconnectToken != expectedToken)
+        {
+            return;
+        }
+
+        if (!session_)
+        {
+            return;
+        }
+
+        sessionToForfeit = session_;
+    }
+
+    sessionToForfeit->forceGameOver(loserSide, "disconnect_timeout");
 }
