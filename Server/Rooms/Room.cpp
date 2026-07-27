@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <thread>
 #include <chrono>
-
 #include "Piece.hpp"
 #include "MessageJson.hpp"
 #include "JsonSerializer.hpp"
