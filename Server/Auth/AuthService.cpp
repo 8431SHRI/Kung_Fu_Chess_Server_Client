@@ -37,3 +37,8 @@ AuthResult AuthService::registerUser(const std::string& username, const std::str
 
     return AuthResult{true, newUser, ""};
 }
+
+std::optional<User> AuthService::findUserById(const std::string& userId) const
+{
+    return userRepository_->findById(userId);
+}

@@ -20,36 +20,10 @@ void GameSession::enqueue(const GameCommand& command)
     commandQueue_.push(command);
 }
 
-void GameSession::pollSource(IPlayerSource* source, Side side)
+void GameSession::setPlayerSource(Side side, std::shared_ptr<IPlayerSource> source)
 {
-    if (!source)
-    {
-        return;
-    }
-
-    if (source->hasPendingMove())
-    {
-        GameCommand cmd;
-        cmd.type = GameCommandType::MOVE;
-        cmd.side = side;
-        source->requestMove(cmd.from, cmd.to);
-        enqueue(cmd);
-    }
-
-    if (source->hasPendingJump())
-    {
-        GameCommand cmd;
-        cmd.type = GameCommandType::JUMP;
-        cmd.side = side;
-        source->requestJump(cmd.at);
-        enqueue(cmd);
-    }
-}
-
-void GameSession::pollPlayerSources()
-{
-    pollSource(whiteSource_.get(), Side::WHITE);
-    pollSource(blackSource_.get(), Side::BLACK);
+    if (side == Side::WHITE) { whiteSource_ = std::move(source); }
+    else { blackSource_ = std::move(source); }
 }
 
 void GameSession::drainQueue()
@@ -78,6 +52,28 @@ void GameSession::drainQueue()
     }
 }
 
+void GameSession::pollPlayerSource(const std::shared_ptr<IPlayerSource>& source)
+{
+    if (!source)
+    {
+        return;
+    }
+
+    if (source->hasPendingMove())
+    {
+        Position from, to;
+        source->requestMove(from, to);
+        engine_->requestMove(from, to);
+    }
+
+    if (source->hasPendingJump())
+    {
+        Position at;
+        source->requestJump(at);
+        engine_->requestJump(at);
+    }
+}
+
 void GameSession::tick(int dtMs)
 {
     if (gameOver_)
@@ -85,25 +81,17 @@ void GameSession::tick(int dtMs)
         return;
     }
 
-    pollPlayerSources();
     drainQueue();
+
+    pollPlayerSource(whiteSource_);
+    pollPlayerSource(blackSource_);
 
     engine_->wait(dtMs);
 
-    GameSnapshot snap = engine_->snapshot();
-
-    if (snap.gameOver && !gameOver_)
-    {
-        gameOver_ = true;
-
-        if (gameOverCallback_)
-        {
-            gameOverCallback_("game_over");
-        }
-    }
-
     if (snapshotCallback_)
     {
-        snapshotCallback_(snap);
+        snapshotCallback_(engine_->snapshot());
     }
+
+    // TODO: עדיין חסר isGameOver() אמיתי ב-GameEngine - ראו הערה קודמת (KnownGap).
 }

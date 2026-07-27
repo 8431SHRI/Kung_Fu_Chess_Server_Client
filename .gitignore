@@ -1,0 +1,39 @@
+# Build directories
+/build/
+/out/
+
+# Visual Studio files
+.vscode/
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+
+# JetBrains CLion (אם רלוונטי)
+.idea/
+
+# vcpkg local installed packages and build temp files
+/vcpkg_installed/
+/vcpkg/blds/
+/vcpkg/pkgs/
+/vcpkg/packages/
+
+# Compiled object files
+*.obj
+*.exe
+*.pdb
+*.user
+*.aps
+*.pch
+*.vspscc
+*.vssscc
+*.opendb
+*.suo
+*.userosversion
+*.idb
+*.nch
+
+# Output binaries
+*.dll
+*.lib
+*.exp

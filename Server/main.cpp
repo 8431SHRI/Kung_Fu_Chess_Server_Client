@@ -1,47 +1,20 @@
-#pragma once
-
-#include <memory>
-#include <optional>
-#include <string>
 #include <csignal>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <thread>
 #include <chrono>
 
-#include "../Persistence/IUserRepository.hpp"
+
 #include "InMemoryUserRepository.hpp"
+#include "AuthService.hpp"
 #include "CommandDispatcher.hpp"
 #include "SessionRegistry.hpp"
 #include "RoomManager.hpp"
 #include "WebSocketServer.hpp"
 #include "Scheduler.hpp"
 #include "PiecePhysicsManager.hpp"
-
-struct AuthResult
-{
-    bool success = false;
-    User user;
-    std::string errorReason;
-};
-
-class AuthService
-{
-public:
-    explicit AuthService(std::shared_ptr<IUserRepository> userRepository);
-
-    AuthResult login(const std::string& username, const std::string& password);
-
-    AuthResult registerUser(const std::string& username, const std::string& password);
-
-    // עוטף IUserRepository::findById - נדרש למקומות ב-Application (כמו JoinRoomCommand)
-    // שצריכים לשלוף פרטי משתמש (username/elo) לפי userId, אחרי שה-login כבר קרה
-    // ורק ה-userId נשמר (למשל ב-SessionRegistry).
-    std::optional<User> findUserById(const std::string& userId) const;
-
-private:
-    std::shared_ptr<IUserRepository> userRepository_;
-};
+#include "MatchmakingService.hpp"
 
 namespace
 {
@@ -81,7 +54,6 @@ int main(int argc, char** argv)
 
     // ------------------------------------------------------------------
     // PiecePhysicsManager - נדרש ע"י כל GameSession חדש שנוצר בתוך Room
-    // (זהה בדיוק לאיך שזה נבנה ב-Client/main.cpp הקיים: PiecePhysicsManager("assets"))
     // ------------------------------------------------------------------
     auto physicsManager = std::make_shared<PiecePhysicsManager>("assets");
 
@@ -91,6 +63,11 @@ int main(int argc, char** argv)
     auto roomManager = std::make_shared<RoomManager>(scheduler, physicsManager);
 
     // ------------------------------------------------------------------
+    // שכבת Matchmaking
+    // ------------------------------------------------------------------
+    auto matchmakingService = std::make_shared<MatchmakingService>(roomManager, sessionRegistry);
+
+    // ------------------------------------------------------------------
     // שכבת Network
     // ------------------------------------------------------------------
     auto sessionRegistry = std::make_shared<SessionRegistry>();
@@ -98,7 +75,8 @@ int main(int argc, char** argv)
     // ------------------------------------------------------------------
     // שכבת Application
     // ------------------------------------------------------------------
-    auto commandDispatcher = std::make_shared<CommandDispatcher>(authService, roomManager, sessionRegistry);
+    auto commandDispatcher = std::make_shared<CommandDispatcher>(
+        authService, roomManager, sessionRegistry, matchmakingService);
 
     WebSocketServer webSocketServer(port, commandDispatcher, sessionRegistry);
 
@@ -108,10 +86,10 @@ int main(int argc, char** argv)
     std::signal(SIGINT, onSigint);
 
     scheduler->run();
+    matchmakingService->run();
     webSocketServer.start();
 
-    std::cout << "Server is running. Supported message types: LOGIN, REGISTER, JOIN_ROOM, MOVE.\n";
-    std::cout << "PLAY_RANDOM, LEAVE_ROOM, JUMP still pending (Matchmaking not built yet).\n";
+    std::cout << "Server is running. Supported message types: LOGIN, REGISTER, JOIN_ROOM, MOVE, PLAY_RANDOM, CANCEL_MATCH.\n";
     std::cout << "Press Ctrl+C to stop.\n";
 
     while (!g_shutdownRequested.load())
@@ -122,6 +100,7 @@ int main(int argc, char** argv)
     std::cout << "\nShutting down...\n";
 
     webSocketServer.stop();
+    matchmakingService->stop();
     scheduler->stop();
 
     std::cout << "Server stopped cleanly.\n";

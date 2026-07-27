@@ -1,7 +1,5 @@
 #include "Scheduler.hpp"
 
-#include <vector>
-
 Scheduler::Scheduler(int tickIntervalMs)
     : tickIntervalMs_(tickIntervalMs)
 {
@@ -12,29 +10,28 @@ Scheduler::~Scheduler()
     stop();
 }
 
-void Scheduler::start()
+void Scheduler::run()
 {
-    if (running_)
+    bool expected = false;
+    if (!running_.compare_exchange_strong(expected, true))
     {
-        return;
+        return; // כבר רץ — קריאה כפולה ל-run() היא no-op
     }
 
-    running_ = true;
-    thread_ = std::thread(&Scheduler::run, this);
+    workerThread_ = std::thread(&Scheduler::loop, this);
 }
 
 void Scheduler::stop()
 {
-    if (!running_)
+    bool expected = true;
+    if (!running_.compare_exchange_strong(expected, false))
     {
-        return;
+        return; // כבר עצור — בטוח לקרוא פעמיים
     }
 
-    running_ = false;
-
-    if (thread_.joinable())
+    if (workerThread_.joinable())
     {
-        thread_.join();
+        workerThread_.join();
     }
 }
 
@@ -50,52 +47,53 @@ void Scheduler::unregisterSession(const std::string& gameId)
     sessions_.erase(gameId);
 }
 
-void Scheduler::run()
+std::vector<std::shared_ptr<GameSession>> Scheduler::snapshotActiveSessions() const
+{
+    std::lock_guard<std::mutex> lock(sessionsMutex_);
+
+    std::vector<std::shared_ptr<GameSession>> result;
+    result.reserve(sessions_.size());
+
+    for (const auto& [gameId, session] : sessions_)
+    {
+        result.push_back(session);
+    }
+
+    return result;
+}
+
+void Scheduler::loop()
 {
     using clock = std::chrono::steady_clock;
 
     auto nextTick = clock::now();
 
-    while (running_)
+    while (running_.load())
     {
+        auto tickStart = clock::now();
+
+        // מעתיקים את רשימת ה-sessions לפני האיטרציה, כדי לא להחזיק את ה-mutex
+        // לאורך כל ה-tick (register/unregister יכולים לקרות מ-thread אחר במקביל)
+        auto activeSessions = snapshotActiveSessions();
+
+        for (auto& session : activeSessions)
+        {
+            if (!session->isGameOver())
+            {
+                session->tick(tickIntervalMs_);
+            }
+        }
+
         nextTick += std::chrono::milliseconds(tickIntervalMs_);
 
-        // עותק קצר-lock של רשימת ה-sessions, כדי לא לחסום registerSession/unregisterSession
-        // בזמן שה-tick עצמו רץ.
-        std::vector<std::shared_ptr<GameSession>> snapshot;
-
+        if (nextTick > tickStart)
         {
-            std::lock_guard<std::mutex> lock(sessionsMutex_);
-            snapshot.reserve(sessions_.size());
-
-            for (auto& [id, session] : sessions_)
-            {
-                snapshot.push_back(session);
-            }
+            std::this_thread::sleep_until(nextTick);
         }
-
-        std::vector<std::string> finishedIds;
-
-        for (auto& session : snapshot)
+        else
         {
-            session->tick(tickIntervalMs_);
-
-            if (session->isGameOver())
-            {
-                finishedIds.push_back(session->getGameId());
-            }
+            // ה-tick לקח יותר זמן מהמוקצב — לא ננסה "להדביק" בקפיצות, פשוט ממשיכים
+            nextTick = clock::now();
         }
-
-        if (!finishedIds.empty())
-        {
-            std::lock_guard<std::mutex> lock(sessionsMutex_);
-
-            for (auto& id : finishedIds)
-            {
-                sessions_.erase(id);
-            }
-        }
-
-        std::this_thread::sleep_until(nextTick);
     }
 }
