@@ -2,9 +2,11 @@
 
 RoomManager::RoomManager(
     std::shared_ptr<Scheduler> scheduler,
-    std::shared_ptr<PiecePhysicsManager> physicsManager)
+    std::shared_ptr<PiecePhysicsManager> physicsManager,
+    std::shared_ptr<IUserRepository> userRepository)
     : scheduler_(std::move(scheduler))
     , physicsManager_(std::move(physicsManager))
+    , userRepository_(std::move(userRepository))
 {
 }
 
@@ -19,7 +21,7 @@ std::shared_ptr<Room> RoomManager::getOrCreate(const std::string& roomName)
         return it->second;
     }
 
-    auto room = std::make_shared<Room>(roomName, scheduler_, physicsManager_);
+    auto room = std::make_shared<Room>(roomName, scheduler_, physicsManager_, userRepository_);
     rooms_[roomName] = room;
 
     return room;

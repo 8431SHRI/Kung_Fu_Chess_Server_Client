@@ -13,6 +13,10 @@
 #include "SpectatorSession.hpp"
 #include "Scheduler.hpp"
 #include "PiecePhysicsManager.hpp"
+#include "EventBus.hpp"
+#include "MoveLogSubscriber.hpp"
+#include "ScoreUpdateSubscriber.hpp"
+#include "IUserRepository.hpp"
 
 enum class JoinRole { PLAYER, SPECTATOR };
 
@@ -31,13 +35,19 @@ public:
     Room(
         std::string name,
         std::shared_ptr<Scheduler> scheduler,
-        std::shared_ptr<PiecePhysicsManager> physicsManager);
+        std::shared_ptr<PiecePhysicsManager> physicsManager,
+        std::shared_ptr<IUserRepository> userRepository = nullptr);
 
     JoinResult join(
         const std::string& connectionId,
+        const std::string& userId,
         const std::string& username,
         int elo,
         SendCallback sendCallback);
+
+    // ה-Bus הפנימי של החדר - MOVE_MADE/PIECE_CAPTURED/GAME_STARTED/GAME_OVER מפורסמים עליו.
+    // חשוף החוצה כדי ש-Network/Application יוכלו להירשם (למשל לשלוח GAME_EVENT/GAME_OVER ללקוח).
+    std::shared_ptr<EventBus> getEventBus() const { return bus_; }
 
     // ל-MatchmakingService: ממלאת את המקום השני בבוט (אחרי timeout בלי יריב אנושי).
     // דורשת ששחקן אנושי אחד בדיוק כבר הצטרף.
@@ -59,6 +69,7 @@ private:
     struct PlayerSlot
     {
         std::string connectionId;
+        std::string userId;
         std::string username;
         int elo = 1000;
         Side side;
@@ -69,6 +80,11 @@ private:
     std::string name_;
     std::shared_ptr<Scheduler> scheduler_;
     std::shared_ptr<PiecePhysicsManager> physicsManager_;
+    std::shared_ptr<IUserRepository> userRepository_;
+
+    std::shared_ptr<EventBus> bus_;
+    std::unique_ptr<MoveLogSubscriber> moveLogSubscriber_;
+    std::unique_ptr<ScoreUpdateSubscriber> scoreUpdateSubscriber_; // null אם לא הועבר repository
 
     mutable std::mutex mutex_;
 
@@ -80,6 +96,7 @@ private:
     void ensureSessionCreatedLocked(); // בונה board/session פעם ראשונה בלבד (idempotent)
     void createGameSessionLocked();    // קורא ל-ensureSessionCreatedLocked + מחבר שחקן שני אנושי
     void broadcastRoomStateLocked() const;
+    void publishGameStartedLocked(const std::string& blackUsername) const;
 
     static std::unique_ptr<Board> buildStandardBoard();
 };

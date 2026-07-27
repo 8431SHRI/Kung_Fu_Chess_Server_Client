@@ -60,8 +60,8 @@ void MatchmakingService::createMatch(const QueueEntry& a, const QueueEntry& b)
     std::string roomName = generateRoomName();
     auto room = roomManager_->getOrCreate(roomName);
 
-    room->join(a.connectionId, a.username, a.elo, a.sendCallback);
-    room->join(b.connectionId, b.username, b.elo, b.sendCallback);
+    room->join(a.connectionId, a.userId, a.username, a.elo, a.sendCallback);
+    room->join(b.connectionId, b.userId, b.username, b.elo, b.sendCallback);
 
     sessionRegistry_->bindGame(a.connectionId, roomName);
     sessionRegistry_->bindGame(b.connectionId, roomName);
@@ -81,7 +81,7 @@ void MatchmakingService::createBotMatch(const QueueEntry& a)
     std::string roomName = generateRoomName();
     auto room = roomManager_->getOrCreate(roomName);
 
-    room->join(a.connectionId, a.username, a.elo, a.sendCallback);
+    room->join(a.connectionId, a.userId, a.username, a.elo, a.sendCallback);
     room->fillWithBot();
 
     sessionRegistry_->bindGame(a.connectionId, roomName);

@@ -7,15 +7,25 @@
 #include "JsonSerializer.hpp"
 #include "GameSnapshotJson.hpp"
 #include "BotPlayerSource.hpp"
+#include "GameEvents.hpp"
 
 Room::Room(
     std::string name,
     std::shared_ptr<Scheduler> scheduler,
-    std::shared_ptr<PiecePhysicsManager> physicsManager)
+    std::shared_ptr<PiecePhysicsManager> physicsManager,
+    std::shared_ptr<IUserRepository> userRepository)
     : name_(std::move(name))
     , scheduler_(std::move(scheduler))
     , physicsManager_(std::move(physicsManager))
+    , userRepository_(std::move(userRepository))
+    , bus_(std::make_shared<EventBus>())
 {
+    moveLogSubscriber_ = std::make_unique<MoveLogSubscriber>(bus_);
+
+    if (userRepository_)
+    {
+        scoreUpdateSubscriber_ = std::make_unique<ScoreUpdateSubscriber>(bus_, userRepository_);
+    }
 }
 
 std::unique_ptr<Board> Room::buildStandardBoard()
@@ -43,6 +53,7 @@ std::unique_ptr<Board> Room::buildStandardBoard()
 
 JoinResult Room::join(
     const std::string& connectionId,
+    const std::string& userId,
     const std::string& username,
     int elo,
     SendCallback sendCallback)
@@ -55,6 +66,7 @@ JoinResult Room::join(
 
         PlayerSlot slot;
         slot.connectionId = connectionId;
+        slot.userId = userId;
         slot.username = username;
         slot.elo = elo;
         slot.side = side;
@@ -92,7 +104,7 @@ void Room::ensureSessionCreatedLocked()
     auto engine = std::make_unique<GameEngine>(*board, *ruleEngine, *arbiter);
 
     session_ = std::make_shared<GameSession>(
-        name_, std::move(board), std::move(ruleEngine), std::move(arbiter), std::move(engine));
+        name_, std::move(board), std::move(ruleEngine), std::move(arbiter), std::move(engine), bus_);
 
     session_->setPlayerSource(players_[0].side, players_[0].source);
 
@@ -109,6 +121,40 @@ void Room::createGameSessionLocked()
 {
     ensureSessionCreatedLocked();
     session_->setPlayerSource(players_[1].side, players_[1].source);
+
+    publishGameStartedLocked(players_[1].username);
+
+    if (scoreUpdateSubscriber_)
+    {
+        const PlayerSlot& first = players_[0];
+        const PlayerSlot& second = players_[1];
+
+        const PlayerSlot& white = (first.side == Side::WHITE) ? first : second;
+        const PlayerSlot& black = (first.side == Side::WHITE) ? second : first;
+
+        scoreUpdateSubscriber_->registerGame(
+            name_,
+            ScoreUpdateSubscriber::PlayerRatingInfo{white.userId, white.username, white.elo, Side::WHITE},
+            ScoreUpdateSubscriber::PlayerRatingInfo{black.userId, black.username, black.elo, Side::BLACK});
+    }
+}
+
+void Room::publishGameStartedLocked(const std::string& blackUsername) const
+{
+    if (!bus_)
+    {
+        return;
+    }
+
+    const PlayerSlot& first = players_[0];
+    const bool firstIsWhite = (first.side == Side::WHITE);
+
+    GameStartedEvent event;
+    event.gameId = name_;
+    event.whiteUsername = firstIsWhite ? first.username : blackUsername;
+    event.blackUsername = firstIsWhite ? blackUsername : first.username;
+
+    bus_->publish(event);
 }
 
 void Room::fillWithBot()
@@ -128,6 +174,10 @@ void Room::fillWithBot()
         botSide, session_->getRuleEngine(), session_->getBoard());
 
     session_->setPlayerSource(botSide, botSource);
+
+    // ללא registerGame ל-ScoreUpdateSubscriber בכוונה - לבוט אין userId אמיתי,
+    // אז אין ELO לעדכן עבור המשחק הזה (ראו הערה ב-ScoreUpdateSubscriber.hpp).
+    publishGameStartedLocked("Bot");
 }
 
 void Room::broadcastRoomStateLocked() const

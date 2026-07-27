@@ -87,7 +87,7 @@ CommandResult JoinRoomCommand::execute()
 
     auto room = roomManager_->getOrCreate(roomName_);
 
-    JoinResult joinResult = room->join(connectionId_, userOpt->username, userOpt->elo, sendCallback_);
+    JoinResult joinResult = room->join(connectionId_, userOpt->id, userOpt->username, userOpt->elo, sendCallback_);
 
     sessionRegistry_->bindGame(connectionId_, room->getName());
 

@@ -8,6 +8,7 @@
 #include "Room.hpp"
 #include "Scheduler.hpp"
 #include "PiecePhysicsManager.hpp"
+#include "IUserRepository.hpp"
 
 /*
  * @class RoomManager
@@ -19,7 +20,8 @@ class RoomManager
 public:
     RoomManager(
         std::shared_ptr<Scheduler> scheduler,
-        std::shared_ptr<PiecePhysicsManager> physicsManager);
+        std::shared_ptr<PiecePhysicsManager> physicsManager,
+        std::shared_ptr<IUserRepository> userRepository = nullptr);
 
     std::shared_ptr<Room> getOrCreate(const std::string& roomName);
     // בניגוד ל-getOrCreate, לא יוצר חדר חדש - מחזיר nullptr אם roomName לא קיים.
@@ -30,7 +32,8 @@ public:
 private:
     std::shared_ptr<Scheduler> scheduler_;
     std::shared_ptr<PiecePhysicsManager> physicsManager_;
-    
+    std::shared_ptr<IUserRepository> userRepository_;
+
     mutable std::mutex mutex_;
     std::unordered_map<std::string, std::shared_ptr<Room>> rooms_;
 };

@@ -3,8 +3,10 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <string>
+#include <unordered_map>
 
 #include "Board.hpp"
 #include "RuleEngine.hpp"
@@ -12,6 +14,7 @@
 #include "GameEngine.hpp"
 #include "GameSnapshot.hpp"
 #include "IPlayerSource.hpp"
+#include "EventBus.hpp"
 
 enum class GameCommandType { MOVE, JUMP };
 
@@ -43,9 +46,14 @@ public:
         std::unique_ptr<Board> board,
         std::unique_ptr<RuleEngine> ruleEngine,
         std::unique_ptr<RealTimeArbiter> arbiter,
-        std::unique_ptr<GameEngine> engine);
+        std::unique_ptr<GameEngine> engine,
+        std::shared_ptr<EventBus> bus = nullptr);
 
     const std::string& getGameId() const { return gameId_; }
+
+    // אופציונלי: אם לא הועבר ל-constructor, אפשר לחבר מאוחר יותר (למשל ע"י Room,
+    // מיד אחרי היצירה, לפני הרישום ל-Scheduler).
+    void setEventBus(std::shared_ptr<EventBus> bus) { bus_ = std::move(bus); }
 
     void enqueue(const GameCommand& command);
 
@@ -85,6 +93,14 @@ private:
 
     bool gameOver_ = false;
 
+    std::shared_ptr<EventBus> bus_; // אופציונלי - כל publish מוגן ב-if (bus_)
+
+    // מצב הכלים בסוף ה-tick הקודם, כדי לזהות מה "השתנה בפועל" (הושלם מהלך / כלי נאכל)
+    // בלי לגעת ב-GameEngine/RealTimeArbiter בכלל - הכל מבוסס על ה-snapshot הציבורי הקיים.
+    bool hasPreviousSnapshot_ = false;
+    std::unordered_map<int, PieceSnapshot> previousPiecesById_;
+
     void drainQueue();
     void pollPlayerSource(const std::shared_ptr<IPlayerSource>& source);
+    void publishSnapshotDiffEvents(const GameSnapshot& snapshot);
 };

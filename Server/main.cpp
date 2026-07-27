@@ -60,17 +60,18 @@ int main(int argc, char** argv)
     // ------------------------------------------------------------------
     // שכבת Rooms
     // ------------------------------------------------------------------
-    auto roomManager = std::make_shared<RoomManager>(scheduler, physicsManager);
-
-    // ------------------------------------------------------------------
-    // שכבת Matchmaking
-    // ------------------------------------------------------------------
-    auto matchmakingService = std::make_shared<MatchmakingService>(roomManager, sessionRegistry);
+    auto roomManager = std::make_shared<RoomManager>(scheduler, physicsManager, userRepository);
 
     // ------------------------------------------------------------------
     // שכבת Network
     // ------------------------------------------------------------------
     auto sessionRegistry = std::make_shared<SessionRegistry>();
+
+    // ------------------------------------------------------------------
+    // שכבת Matchmaking
+    // ------------------------------------------------------------------
+    // הערה: תוקן סדר אתחול - קודם היה משתמש ב-sessionRegistry לפני שהוא מוצהר.
+    auto matchmakingService = std::make_shared<MatchmakingService>(roomManager, sessionRegistry);
 
     // ------------------------------------------------------------------
     // שכבת Application
